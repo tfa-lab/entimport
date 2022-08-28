@@ -35,6 +35,7 @@ type (
 		uniqueEdgeFromParent bool
 		refName              string
 		edgeField            string
+		nullable             bool
 	}
 
 	// fieldFunc receives an Atlas column and converts it to an Ent field.
@@ -164,6 +165,9 @@ func entEdge(nodeName, nodeType string, currentNode *schemast.UpsertSchema, dir 
 			desc.Name = "parent_" + desc.Name
 			desc.RefName = "child_" + desc.RefName
 		}
+		if !opts.nullable {
+			desc.Required = true
+		}
 	}
 	desc.Type = nodeType
 	return e
@@ -263,10 +267,8 @@ func upsertNode(field fieldFunc, table *schema.Table) (*schemast.UpsertSchema, e
 	upsert := &schemast.UpsertSchema{
 		Name: typeName(table.Name),
 	}
-	if tableName(table.Name) != table.Name {
-		upsert.Annotations = []entschema.Annotation{
-			entsql.Annotation{Table: table.Name},
-		}
+	upsert.Annotations = []entschema.Annotation{
+		entsql.Annotation{Table: table.Name},
 	}
 	fields := make(map[string]ent.Field, len(upsert.Fields))
 	for _, f := range upsert.Fields {
@@ -303,11 +305,10 @@ func upsertNode(field fieldFunc, table *schema.Table) (*schemast.UpsertSchema, e
 	for _, fk := range table.ForeignKeys {
 		for _, column := range fk.Columns {
 			// FK / Reference column
-			fld, ok := fields[column.Name]
+			_, ok := fields[column.Name]
 			if !ok {
 				return nil, fmt.Errorf("foreign key for column: %q doesn't exist in referenced table", column.Name)
 			}
-			fld.Descriptor().Optional = true
 		}
 	}
 	return upsert, err
@@ -317,6 +318,7 @@ func upsertNode(field fieldFunc, table *schema.Table) (*schemast.UpsertSchema, e
 func applyColumnAttributes(f ent.Field, col *schema.Column) {
 	desc := f.Descriptor()
 	desc.Optional = col.Type.Null
+	desc.Nillable = col.Type.Null
 	for _, attr := range col.Attrs {
 		if a, ok := attr.(*schema.Comment); ok {
 			desc.Comment = a.Text
@@ -383,6 +385,7 @@ func upsertOneToX(mutations map[string]schemast.Mutator, table *schema.Table) {
 			uniqueEdgeFromParent: true,
 			refName:              tableName(child.Name),
 			edgeField:            colName,
+			nullable:             fk.Columns[0].Type.Null,
 		}
 		if child.Name == parent.Name {
 			opts.recursive = true
