@@ -1,4 +1,4 @@
-module ariga.io/entimport
+module github.com/tfa-lab/entimport
 
 go 1.17
 
